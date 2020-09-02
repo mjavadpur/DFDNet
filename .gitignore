@@ -1,0 +1,9 @@
+__pycache__/
+*.egg-info/
+build/
+dist/
+DictionaryCenter512
+checkpoints
+weights
+Results
+TestData
