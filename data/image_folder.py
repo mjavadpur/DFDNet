@@ -5,15 +5,23 @@
 # directory as well as the subdirectories
 ###############################################################################
 
-import torch.utils.data as data
-
-from PIL import Image
 import os
 import os.path
 
+import torch.utils.data as data
+from PIL import Image
+
 IMG_EXTENSIONS = [
-    '.jpg', '.JPG', '.jpeg', '.JPEG',
-    '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP',
+    '.jpg',
+    '.JPG',
+    '.jpeg',
+    '.JPEG',
+    '.png',
+    '.PNG',
+    '.ppm',
+    '.PPM',
+    '.bmp',
+    '.BMP',
 ]
 
 
@@ -41,13 +49,16 @@ def default_loader(path):
 
 class ImageFolder(data.Dataset):
 
-    def __init__(self, root, transform=None, return_paths=False,
+    def __init__(self,
+                 root,
+                 transform=None,
+                 return_paths=False,
                  loader=default_loader):
         imgs = make_dataset(root)
         if len(imgs) == 0:
-            raise(RuntimeError("Found 0 images in: " + root + "\n"
-                               "Supported image extensions are: " +
-                               ",".join(IMG_EXTENSIONS)))
+            raise (RuntimeError("Found 0 images in: " + root + "\n"
+                                "Supported image extensions are: " +
+                                ",".join(IMG_EXTENSIONS)))
 
         self.root = root
         self.imgs = imgs
