@@ -1,6 +1,4 @@
-import math
 import os
-import random
 import sys
 
 import cv2
@@ -16,9 +14,6 @@ from data.image_folder import make_dataset
 from models import create_model
 from options.test_options import TestOptions
 from util import util
-
-sys.path.append('FaceLandmarkDetection')
-import face_alignment
 
 
 class FaceRestorationHelper(object):
@@ -205,14 +200,8 @@ if __name__ == '__main__':
     opt.no_flip = True  # no flip
     opt.display_id = -1  # no visdom display
     opt.which_epoch = 'latest'  #
-    official_adaption = True
-    #######################################################################
-    ########################### Test Param ################################
-    #######################################################################
-    # opt.gpu_ids = [0] # gpu id. if use cpu, set opt.gpu_ids = []
-    # TestImgPath = './TestData/TestWhole' # test image path
-    # ResultsDir = './Results/TestWholeResults' #save path
-    # UpScaleWhole = 4  # the upsamle scale. It should be noted that our face results are fixed to 512.
+    official_adaption = False
+
     TestImgPath = opt.test_path
     ResultsDir = opt.results_dir
     UpScaleWhole = opt.upscale_factor
@@ -236,8 +225,6 @@ if __name__ == '__main__':
         dev = 'cuda:{}'.format(opt.gpu_ids[0])
     else:
         dev = 'cpu'
-    FD = face_alignment.FaceAlignment(
-        face_alignment.LandmarksType._2D, device=dev, flip_input=False)
 
     if not os.path.exists(SaveLandmarkPath):
         os.makedirs(SaveLandmarkPath)
@@ -273,33 +260,6 @@ if __name__ == '__main__':
             cropped_imgs = face_helper.cropped_imgs
 
         face_helper.get_face_landmarks_68()
-
-        for idx, cropped_face in enumerate(cropped_imgs):
-
-            try:
-                PredsAll = FD.get_landmarks(cropped_face)
-            except Exception:
-                print('Error in face detection, continue...')
-                continue
-            if PredsAll is None:
-                print('No face, continue...')
-                continue
-            ins = 0
-            if len(PredsAll) != 1:
-                hights = []
-                for l in PredsAll:
-                    hights.append(l[8, 1] - l[19, 1])
-                ins = hights.index(max(hights))
-                # print('\t################ Warning: Detected too many face, only handle the largest one...')
-                # continue
-            preds = PredsAll[ins]
-            AddLength = np.sqrt(
-                np.sum(np.power(preds[27][0:2] - preds[33][0:2], 2)))
-            SaveName = ImgName + f'{idx}' + '.txt'
-            np.savetxt(
-                os.path.join(SaveLandmarkPath, SaveName),
-                preds[:, 0:2],
-                fmt='%.3f')
 
         print('Step 3: Face restoration')
 
