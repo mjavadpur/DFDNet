@@ -68,8 +68,6 @@ class FaceRestorationHelper(object):
             # warp and crop image
             cropped_img = cv2.warpAffine(self.input_img, affine_matrix,
                                          self.out_size)  # TODO: img shape?
-            # for equivalence
-            cropped_img = cropped_img.round().astype(np.int8)
             self.cropped_imgs.append(cropped_img)
             if save_cropped_path is not None:
                 io.imsave(save_cropped_path, cropped_img)
