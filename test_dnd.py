@@ -73,12 +73,13 @@ class FaceRestorationHelper(object):
             affine_matrix = self.similarity_trans.params[0:2, :]
             self.affine_matrices.append(affine_matrix)  # TODO:need copy?
             # warp and crop image
+            print(self.input_img.shape)
             cropped_img = cv2.warpAffine(self.input_img, affine_matrix,
                                          self.out_size)  # TODO: img shape?
             self.cropped_imgs.append(cropped_img)
             if save_cropped_path is not None:
                 path, ext = os.path.splitext(save_cropped_path)
-                save_path = f'{path}_{idx}.{ext}'
+                save_path = f'{path}_{idx}{ext}'
                 io.imsave(save_path, cropped_img)
             # get inverse affine matrix
             self.similarity_trans.estimate(self.face_template,
@@ -272,8 +273,8 @@ if __name__ == '__main__':
 
         print('\tStep 3: Face restoration')
 
-        for cropped_face, landmarks in zip(cropped_imgs,
-                                           face_helper.all_landmarks_68):
+        for idx, (cropped_face, landmarks) in enumerate(
+                zip(cropped_imgs, face_helper.all_landmarks_68)):
             torch.cuda.empty_cache()
             data = obtain_inputs(cropped_face, landmarks, ImgName)
             if data == 0:
@@ -285,7 +286,10 @@ if __name__ == '__main__':
                 visuals = model.get_current_visuals()
                 im_data = visuals['fake_A']
                 im = util.tensor2im(im_data)
-                util.save_image(im, os.path.join(SaveRestorePath, ImgName))
+                path, ext = os.path.splitext(
+                    os.path.join(SaveRestorePath, ImgName))
+                save_path = f'{path}_{idx}{ext}'
+                util.save_image(im, save_path)
                 face_helper.add_restored_face(im)
             except Exception as e:
                 print(f'Error in enhancing this image: {str(e)}. continue...')
