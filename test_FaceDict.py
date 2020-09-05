@@ -69,7 +69,6 @@ class FaceRestorationHelper(object):
             shape = self.shape_predictor_68(
                 face, det_face[0].rect)  # (should only one face)
             landmark = np.array([[part.x, part.y] for part in shape.parts()])
-            print(landmark)
             self.all_landmarks_68.append(landmark)
 
     def get_affine_matrix(self, save_cropped_path=None):
@@ -142,16 +141,7 @@ class FaceRestorationHelper(object):
 
 
 def get_part_location(partpath, imgname):
-    Landmarks = []
-    if not os.path.exists(os.path.join(partpath, imgname + '.txt')):
-        print(os.path.join(partpath, imgname + '.txt'))
-        print('\t################ No landmark file')
-        return 0
-    with open(os.path.join(partpath, imgname + '.txt'), 'r') as f:
-        for line in f:
-            tmp = [np.float(i) for i in line.split(' ') if i != '\n']
-            Landmarks.append(tmp)
-    Landmarks = np.array(Landmarks)
+
     Map_LE = list(np.hstack((range(17, 22), range(36, 42))))
     Map_RE = list(np.hstack((range(22, 27), range(42, 48))))
     Map_NO = list(range(29, 36))
@@ -192,10 +182,10 @@ def get_part_location(partpath, imgname):
             0), torch.from_numpy(Location_MO).unsqueeze(0)
 
 
-def obtain_inputs(img, Landmark_path, img_name):
+def obtain_inputs(img, Landmarks, img_name):
     A = Image.fromarray(img).convert('RGB')
 
-    Part_locations = get_part_location(Landmark_path, img_name)
+    Part_locations = get_part_location(Landmarks, img_name)
     if Part_locations == 0:
         return 0
     C = A
@@ -318,9 +308,20 @@ if __name__ == '__main__':
 
         print('Step 3: Face restoration')
 
+        landmarks = []
+        if not os.path.exists(
+                os.path.join(SaveLandmarkPath, ImgName + '.txt')):
+            print(os.path.join(SaveLandmarkPath, ImgName + '.txt'))
+            print('\t################ No landmark file')
+        with open(os.path.join(SaveLandmarkPath, ImgName + '.txt'), 'r') as f:
+            for line in f:
+                tmp = [np.float(i) for i in line.split(' ') if i != '\n']
+                landmarks.append(tmp)
+        landmarks = np.array(landmarks)
+
         for idx, cropped_face in enumerate(cropped_imgs):
             torch.cuda.empty_cache()
-            data = obtain_inputs(cropped_face, SaveLandmarkPath, ImgName)
+            data = obtain_inputs(cropped_face, landmarks, ImgName)
             if data == 0:
                 print('Error in landmark file, continue...')
                 continue
