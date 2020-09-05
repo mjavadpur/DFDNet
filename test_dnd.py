@@ -55,6 +55,7 @@ class FaceRestorationHelper(object):
             shape = self.shape_predictor_5(self.input_img, face.rect)
             landmark = np.array([[part.x, part.y] for part in shape.parts()])
             self.all_landmarks_5.append(landmark)
+        return len(self.all_landmarks_5)
 
     def get_face_landmarks_68(self):
         for face in self.cropped_imgs:
@@ -66,7 +67,7 @@ class FaceRestorationHelper(object):
             self.all_landmarks_68.append(landmark)
 
     def warp_crop_faces(self, save_cropped_path=None):
-        for i, landmark in enumerate(self.all_landmarks_5):
+        for idx, landmark in enumerate(self.all_landmarks_5):
             # get affine matrix
             self.similarity_trans.estimate(landmark, self.face_template)
             affine_matrix = self.similarity_trans.params[0:2, :]
@@ -76,7 +77,9 @@ class FaceRestorationHelper(object):
                                          self.out_size)  # TODO: img shape?
             self.cropped_imgs.append(cropped_img)
             if save_cropped_path is not None:
-                io.imsave(save_cropped_path, cropped_img)
+                path, ext = os.path.splitext(save_cropped_path)
+                save_path = f'{path}_{idx}.{ext}'
+                io.imsave(save_path, cropped_img)
             # get inverse affine matrix
             self.similarity_trans.estimate(self.face_template,
                                            landmark * self.upsample_factor)
@@ -243,14 +246,20 @@ if __name__ == '__main__':
     ImgPaths = make_dataset(TestImgPath)
     for i, ImgPath in enumerate(ImgPaths):
         ImgName = os.path.split(ImgPath)[-1]
+        torch.cuda.empty_cache()
+
         print('Processing {} image'.format(ImgName))
         SavePath = os.path.join(SaveCropPath, ImgName)
 
-        # detect face
+        # detect faces
         num_det_faces = face_helper.detect_faces(ImgPath, upsample_num_times=1)
-        print(f'\tStep1: Detect {num_det_faces} faces.')
-        face_helper.get_face_landmarks_5()
+        # get face landmarks for each face
+        num_landmarks = face_helper.get_face_landmarks_5()
+        print(f'\tStep 1: Detect {num_det_faces} faces, '
+              f'{num_landmarks} landmarks.')
+        # warp and crop each face
         face_helper.warp_crop_faces(SavePath)
+        print(face_helper.affine_matrices)
 
         print('\tStep 2: Face landmark detection from the cropped image')
 
