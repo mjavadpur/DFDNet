@@ -23,35 +23,27 @@ sys.path.append('FaceLandmarkDetection')
 import face_alignment
 
 
-###########################################################################
-################# functions of crop and align face images #################
-###########################################################################
-def get_5_points(img):
-    dets = detector(img, 1)
-    if len(dets) == 0:
+def get_5_points(img, upsample_num_times=1):
+    # Upsamples the image upsample_num_times before running the face detector.
+    # face detection
+    face_detector = dlib.cnn_face_detection_model_v1(
+        './packages/mmod_human_face_detector.dat')
+    shape_predictor = dlib.shape_predictor(
+        './packages/shape_predictor_5_face_landmarks.dat')
+
+    det_faces = face_detector(img, upsample_num_times)
+    if len(det_faces) == 0:
+        print('No face detected. Try to increase upsample_num_times.')
         return None
-    areas = []
-    if len(dets) > 1:
-        print(
-            '\t###### Warning: more than one face is detected. In this version, we only handle the largest one.'
-        )
-    for i in range(len(dets)):
-        area = (dets[i].rect.right() - dets[i].rect.left()) * (
-            dets[i].rect.bottom() - dets[i].rect.top())
-        areas.append(area)
-    ins = areas.index(max(areas))
-    shape = sp(img, dets[ins].rect)
-    single_points = []
-    for i in range(5):
-        single_points.append([shape.part(i).x, shape.part(i).y])
-    return np.array(single_points)
+    all_landmarks = []
+    for i, face in enumerate(det_faces):
+        shape = shape_predictor(img, face.rect)
+        landmark = np.array([[part.x, part.y] for part in shape.parts()])
+        all_landmarks.append(landmark)
+    return all_landmarks
 
 
-def align_and_save(img_path,
-                   save_path,
-                   save_input_path,
-                   save_param_path,
-                   upsample_scale=2):
+def align_and_save(img_path, save_path, save_param_path, upsample_scale=2):
     out_size = (512, 512)
     img = dlib.load_rgb_image(img_path)
     h, w, _ = img.shape
@@ -64,7 +56,6 @@ def align_and_save(img_path,
     M = tform.params[0:2, :]
     crop_img = cv2.warpAffine(img, M, out_size)
     io.imsave(save_path, crop_img)  #save the crop and align face
-    io.imsave(save_input_path, img)  #save the whole input image
     tform2 = trans.SimilarityTransform()
     tform2.estimate(reference, source * upsample_scale)
     # inv_M = cv2.invertAffineTransform(M)
@@ -207,31 +198,11 @@ if __name__ == '__main__':
     ResultsDir = opt.results_dir
     UpScaleWhole = opt.upscale_factor
 
-    print(
-        '\n###################### Now Running the X {} task ##############################'
-        .format(UpScaleWhole))
+    # Step 1: Crop and align faces from the whole image
+    print('Step 1: Crop and align faces from the whole image')
 
-    #######################################################################
-    ###########Step 1: Crop and Align Face from the whole Image ###########
-    #######################################################################
-    print(
-        '\n###############################################################################'
-    )
-    print(
-        '####################### Step 1: Crop and Align Face ###########################'
-    )
-    print(
-        '###############################################################################\n'
-    )
-
-    detector = dlib.cnn_face_detection_model_v1(
-        './packages/mmod_human_face_detector.dat')
-    sp = dlib.shape_predictor(
-        './packages/shape_predictor_5_face_landmarks.dat')
     reference = np.load('./packages/FFHQ_template.npy') / 2
-    SaveInputPath = os.path.join(ResultsDir, 'Step0_Input')
-    if not os.path.exists(SaveInputPath):
-        os.makedirs(SaveInputPath)
+
     SaveCropPath = os.path.join(ResultsDir, 'Step1_CropImg')
     if not os.path.exists(SaveCropPath):
         os.makedirs(SaveCropPath)
@@ -246,9 +217,8 @@ if __name__ == '__main__':
         ImgName = os.path.split(ImgPath)[-1]
         print('Crop and Align {} image'.format(ImgName))
         SavePath = os.path.join(SaveCropPath, ImgName)
-        SaveInput = os.path.join(SaveInputPath, ImgName)
         SaveParam = os.path.join(SaveParamPath, ImgName + '.npy')
-        align_and_save(ImgPath, SavePath, SaveInput, SaveParam, UpScaleWhole)
+        align_and_save(ImgPath, SavePath, SaveParam, UpScaleWhole)
 
     #######################################################################
     ####### Step 2: Face Landmark Detection from the Cropped Image ########
@@ -305,7 +275,7 @@ if __name__ == '__main__':
     #######################################################################
     ####################### Step 3: Face Restoration ######################
     #######################################################################
-
+    '''
     print(
         '\n###############################################################################'
     )
@@ -375,3 +345,4 @@ if __name__ == '__main__':
                       UpScaleWhole)
 
     print('\nAll results are saved in {} \n'.format(ResultsDir))
+    '''
