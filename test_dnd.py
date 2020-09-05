@@ -40,6 +40,11 @@ class FaceRestorationHelper(object):
         self.cropped_imgs = []
         self.restored_faces = []
 
+    def free_dlib_gpu_memory(self):
+        del self.face_detector
+        del self.shape_predictor_5
+        del self.shape_predictor_68
+
     def read_input_image(self, img_path):
         self.input_img = dlib.load_rgb_image(img_path)
 
@@ -184,14 +189,12 @@ def get_part_location(Landmarks):
 
 
 def obtain_inputs(img, Landmarks, img_name):
-    # A = Image.fromarray(img).convert('RGB')
-    # A = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
     A = img
-    Part_locations = get_part_location(Landmarks, img_name)
+    Part_locations = get_part_location(Landmarks)
     if Part_locations == 0:
         return 0
     C = A
-    # A = A.resize((512, 512), Image.BICUBIC)
     A = cv2.resize(A, (512, 512), interpolation=cv2.INTER_CUBIC)
     A = transforms.ToTensor()(A)
     C = transforms.ToTensor()(C)
@@ -281,7 +284,7 @@ if __name__ == '__main__':
                     im = util.tensor2im(im_data)
                     path, ext = os.path.splitext(
                         os.path.join(save_restore_root, img_name))
-                    save_path = f'{path}_{idx}{ext}'
+                    save_path = f'{path}_{idx:02d}{ext}'
                     util.save_image(im, save_path)
                     face_helper.add_restored_face(im)
                 except Exception as e:
