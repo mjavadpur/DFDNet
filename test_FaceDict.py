@@ -15,7 +15,8 @@ from skimage import transform as trans
 from data.image_folder import make_dataset
 from models import create_model
 from options.test_options import TestOptions
-from util.visualizer import save_crop
+
+from .util import util
 
 sys.path.append('FaceLandmarkDetection')
 import face_alignment
@@ -87,6 +88,7 @@ class FaceRestorationHelper(object):
         upsample_img = cv2.resize(self.input_img, (w_up, h_up))
         for restored_face, inverse_affine in zip(self.restored_faces,
                                                  self.inverse_affine_matrices):
+            p
             inv_restored = cv2.warpAffine(restored_face, inverse_affine,
                                           (w_up, h_up))
             mask = np.ones((*self.out_size, 3), dtype=np.float32)
@@ -299,8 +301,10 @@ if __name__ == '__main__':
             try:
                 model.test()
                 visuals = model.get_current_visuals()
-                save_crop(visuals, os.path.join(SaveRestorePath, ImgName))
-                face_helper.add_restored_face(visuals)
+                im_data = visuals['fake_A']
+                im = util.tensor2im(im_data)
+                util.save_image(im, os.path.join(SaveRestorePath, ImgName))
+                face_helper.add_restored_face(im)
             except Exception as e:
                 print(f'Error in enhancing this image: {str(e)}. continue...')
                 continue
