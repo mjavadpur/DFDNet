@@ -67,7 +67,7 @@ class FaceRestorationHelper(object):
             # face detection
             det_face = self.face_detector(face, 1)
             shape = self.shape_predictor_68(
-                face, det_face[0])  # (should only one face)
+                face, det_face[0].rect)  # (should only one face)
             landmark = np.array([[part.x, part.y] for part in shape.parts()])
             print(landmark)
             self.all_landmarks_68.append(landmark)
