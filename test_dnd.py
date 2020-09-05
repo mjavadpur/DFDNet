@@ -173,8 +173,8 @@ def get_part_location(Landmarks, imgname):
 
 def obtain_inputs(img, Landmarks, img_name):
     # A = Image.fromarray(img).convert('RGB')
-    A = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
+    # A = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    A = img
     Part_locations = get_part_location(Landmarks, img_name)
     if Part_locations == 0:
         return 0
@@ -244,16 +244,16 @@ if __name__ == '__main__':
     ImgPaths = make_dataset(TestImgPath)
     for i, ImgPath in enumerate(ImgPaths):
         ImgName = os.path.split(ImgPath)[-1]
-        print('Crop and Align {} image'.format(ImgName))
+        print('Processing {} image'.format(ImgName))
         SavePath = os.path.join(SaveCropPath, ImgName)
 
-        print('Step 1: Crop and align faces from the whole image')
+        print('\tStep 1: Crop and align faces from the whole image')
         # detect face
         face_helper.detect_faces(ImgPath, upsample_num_times=1)
         face_helper.get_face_landmarks_5()
         face_helper.get_affine_matrix(SavePath)
 
-        print('Step 2: Face landmark detection from the cropped image')
+        print('\tStep 2: Face landmark detection from the cropped image')
 
         if official_adaption:
             cropped_imgs = [io.imread(SavePath)]
@@ -262,7 +262,7 @@ if __name__ == '__main__':
 
         face_helper.get_face_landmarks_68()
 
-        print('Step 3: Face restoration')
+        print('\tStep 3: Face restoration')
 
         for cropped_face, landmarks in zip(cropped_imgs,
                                            face_helper.all_landmarks_68):
@@ -283,7 +283,7 @@ if __name__ == '__main__':
                 print(f'Error in enhancing this image: {str(e)}. continue...')
                 continue
 
-        print('Step 4: Paste the Restored Face to the Input Image')
+        print('\tStep 4: Paste the Restored Face to the Input Image')
 
         for restored_face in cropped_imgs:
             WholeInputPath = os.path.join(TestImgPath, ImgName)
