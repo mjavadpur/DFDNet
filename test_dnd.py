@@ -2,6 +2,7 @@ import os
 
 import cv2
 import dlib
+import mmcv
 import numpy as np
 import torch
 import torchvision.transforms as transforms
@@ -52,6 +53,7 @@ class FaceRestorationHelper(object):
 
     def get_face_landmarks_5(self):
         for face in self.det_faces:
+            print('5', face.rect)
             shape = self.shape_predictor_5(self.input_img, face.rect)
             landmark = np.array([[part.x, part.y] for part in shape.parts()])
             self.all_landmarks_5.append(landmark)
@@ -61,6 +63,7 @@ class FaceRestorationHelper(object):
         for face in self.cropped_imgs:
             # face detection
             det_face = self.face_detector(face, 1)
+            print('68', det_face[0].rect)
             shape = self.shape_predictor_68(
                 face, det_face[0].rect)  # (should only one face)
             landmark = np.array([[part.x, part.y] for part in shape.parts()])
@@ -71,11 +74,10 @@ class FaceRestorationHelper(object):
             # get affine matrix
             self.similarity_trans.estimate(landmark, self.face_template)
             affine_matrix = self.similarity_trans.params[0:2, :]
-            self.affine_matrices.append(affine_matrix)  # TODO:need copy?
+            self.affine_matrices.append(affine_matrix)
             # warp and crop image
-            print(self.input_img.shape)
             cropped_img = cv2.warpAffine(self.input_img, affine_matrix,
-                                         self.out_size)  # TODO: img shape?
+                                         self.out_size)
             self.cropped_imgs.append(cropped_img)
             if save_cropped_path is not None:
                 path, ext = os.path.splitext(save_cropped_path)
@@ -85,8 +87,7 @@ class FaceRestorationHelper(object):
             self.similarity_trans.estimate(self.face_template,
                                            landmark * self.upsample_factor)
             inverse_affine = self.similarity_trans.params[0:2, :]
-            self.inverse_affine_matrices.append(
-                inverse_affine)  # TODO:need copy?
+            self.inverse_affine_matrices.append(inverse_affine)
 
     def add_restored_face(self, face):
         self.restored_faces.append(face)
@@ -204,71 +205,52 @@ if __name__ == '__main__':
     opt.no_flip = True  # no flip
     opt.display_id = -1  # no visdom display
     opt.which_epoch = 'latest'  #
-    official_adaption = True
+    official_adaption = False
 
     TestImgPath = opt.test_path
-    ResultsDir = opt.results_dir
+    ImgPaths = make_dataset(TestImgPath)
+    result_root = opt.results_dir
     UpScaleWhole = opt.upscale_factor
-
-    # Step 1: Crop and align faces from the whole image
-
-    SaveCropPath = os.path.join(ResultsDir, 'Step1_CropImg')
-    if not os.path.exists(SaveCropPath):
-        os.makedirs(SaveCropPath)
-
-    SaveParamPath = os.path.join(
-        ResultsDir, 'Step1_AffineParam')  #save the inverse affine parameters
-    if not os.path.exists(SaveParamPath):
-        os.makedirs(SaveParamPath)
-
-    SaveLandmarkPath = os.path.join(ResultsDir, 'Step2_Landmarks')
-    SaveRestorePath = os.path.join(
-        ResultsDir, 'Step3_RestoreCropFace')  # Only Face Results
-
     if len(opt.gpu_ids) > 0:
         dev = 'cuda:{}'.format(opt.gpu_ids[0])
     else:
         dev = 'cpu'
-
-    if not os.path.exists(SaveLandmarkPath):
-        os.makedirs(SaveLandmarkPath)
-
-    if not os.path.exists(SaveRestorePath):
-        os.makedirs(SaveRestorePath)
     model = create_model(opt)
     model.setup(opt)
 
-    SaveFinalPath = os.path.join(ResultsDir, 'Step4_FinalResults')
+    # Step 1: Crop and align faces from the whole image
 
-    if not os.path.exists(SaveFinalPath):
-        os.makedirs(SaveFinalPath)
+    save_crop_root = os.path.join(result_root, 'cropped_faces')
+    save_restore_root = os.path.join(result_root, 'restored_faces')
+    save_final_root = os.path.join(result_root, 'final_results')
+    mmcv.mkdir_or_exist(save_crop_root)
+    mmcv.mkdir_or_exist(save_restore_root)
+    mmcv.mkdir_or_exist(save_restore_root)
 
     face_helper = FaceRestorationHelper()
-    ImgPaths = make_dataset(TestImgPath)
-    for i, ImgPath in enumerate(ImgPaths):
-        ImgName = os.path.split(ImgPath)[-1]
+
+    for img_path in ImgPaths:
+        img_name = os.path.basename(img_path)
+        print(f'Processing {img_name} image')
         torch.cuda.empty_cache()
 
-        print('Processing {} image'.format(ImgName))
-        SavePath = os.path.join(SaveCropPath, ImgName)
+        save_crop_path = os.path.join(save_crop_root, img_name)
 
         # detect faces
-        num_det_faces = face_helper.detect_faces(ImgPath, upsample_num_times=1)
+        num_det_faces = face_helper.detect_faces(
+            img_path, upsample_num_times=1)
         # get face landmarks for each face
         num_landmarks = face_helper.get_face_landmarks_5()
         print(f'\tStep 1: Detect {num_det_faces} faces, '
               f'{num_landmarks} landmarks.')
         # warp and crop each face
-        face_helper.warp_crop_faces(SavePath)
-        print(face_helper.affine_matrices)
-
-        print('\tStep 2: Face landmark detection from the cropped image')
+        face_helper.warp_crop_faces(save_crop_path)
 
         if official_adaption:
-            cropped_imgs = [io.imread(SavePath)]
+            cropped_imgs = [io.imread(save_crop_path)]  # TODO
         else:
             cropped_imgs = face_helper.cropped_imgs
-
+        # get 68 landmarks
         face_helper.get_face_landmarks_68()
 
         print('\tStep 3: Face restoration')
@@ -276,7 +258,7 @@ if __name__ == '__main__':
         for idx, (cropped_face, landmarks) in enumerate(
                 zip(cropped_imgs, face_helper.all_landmarks_68)):
             torch.cuda.empty_cache()
-            data = obtain_inputs(cropped_face, landmarks, ImgName)
+            data = obtain_inputs(cropped_face, landmarks, img_name)
             if data == 0:
                 print('Error in landmark file, continue...')
                 continue
@@ -287,7 +269,7 @@ if __name__ == '__main__':
                 im_data = visuals['fake_A']
                 im = util.tensor2im(im_data)
                 path, ext = os.path.splitext(
-                    os.path.join(SaveRestorePath, ImgName))
+                    os.path.join(save_restore_path, img_name))
                 save_path = f'{path}_{idx}{ext}'
                 util.save_image(im, save_path)
                 face_helper.add_restored_face(im)
@@ -298,11 +280,8 @@ if __name__ == '__main__':
         print('\tStep 4: Paste the Restored Face to the Input Image')
 
         for restored_face in cropped_imgs:
-            WholeInputPath = os.path.join(TestImgPath, ImgName)
-            FaceResultPath = os.path.join(SaveRestorePath, ImgName)
-            ParamPath = os.path.join(SaveParamPath, ImgName + '.npy')
-            SaveWholePath = os.path.join(SaveFinalPath, ImgName)
+            SaveWholePath = os.path.join(save_final_path, img_name)
             face_helper.paste_to_input_image(SaveWholePath)
 
         face_helper.clean_all()
-    print('\nAll results are saved in {} \n'.format(ResultsDir))
+    print('\nAll results are saved in {} \n'.format(result_root))
