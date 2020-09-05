@@ -18,7 +18,7 @@ from util import util
 
 class FaceRestorationHelper(object):
 
-    def __init__(self):
+    def __init__(self, upsample_factor):
         self.face_detector = dlib.cnn_face_detection_model_v1(
             './packages/mmod_human_face_detector.dat')
 
@@ -31,7 +31,7 @@ class FaceRestorationHelper(object):
         self.similarity_trans = trans.SimilarityTransform()
         self.face_template = np.load('./packages/FFHQ_template.npy') / 2
         self.out_size = (512, 512)
-        self.upsample_factor = 2
+        self.upsample_factor = upsample_factor
 
         self.all_landmarks_5 = []
         self.all_landmarks_68 = []
@@ -236,7 +236,7 @@ if __name__ == '__main__':
     mmcv.mkdir_or_exist(save_restore_root)
     mmcv.mkdir_or_exist(save_final_root)
 
-    face_helper = FaceRestorationHelper()
+    face_helper = FaceRestorationHelper(upsample_factor=opt.upscale_factor)
 
     for img_path in ImgPaths:
         img_name = os.path.basename(img_path)
