@@ -5,7 +5,6 @@ import dlib
 import numpy as np
 import torch
 import torchvision.transforms as transforms
-from PIL import Image
 from skimage import io
 from skimage import transform as trans
 
@@ -49,6 +48,7 @@ class FaceRestorationHelper(object):
         self.det_faces = self.face_detector(self.input_img, upsample_num_times)
         if len(self.det_faces) == 0:
             print('No face detected. Try to increase upsample_num_times.')
+        return len(self.det_faces)
 
     def get_face_landmarks_5(self):
         for face in self.det_faces:
@@ -65,8 +65,7 @@ class FaceRestorationHelper(object):
             landmark = np.array([[part.x, part.y] for part in shape.parts()])
             self.all_landmarks_68.append(landmark)
 
-    def get_affine_matrix(self, save_cropped_path=None):
-        # get affine matrix for each face
+    def warp_crop_faces(self, save_cropped_path=None):
         for i, landmark in enumerate(self.all_landmarks_5):
             # get affine matrix
             self.similarity_trans.estimate(landmark, self.face_template)
@@ -247,11 +246,11 @@ if __name__ == '__main__':
         print('Processing {} image'.format(ImgName))
         SavePath = os.path.join(SaveCropPath, ImgName)
 
-        print('\tStep 1: Crop and align faces from the whole image')
         # detect face
-        face_helper.detect_faces(ImgPath, upsample_num_times=1)
+        num_det_faces = face_helper.detect_faces(ImgPath, upsample_num_times=1)
+        print(f'\tStep1: Detect {num_det_faces} faces.')
         face_helper.get_face_landmarks_5()
-        face_helper.get_affine_matrix(SavePath)
+        face_helper.warp_crop_faces(SavePath)
 
         print('\tStep 2: Face landmark detection from the cropped image')
 
