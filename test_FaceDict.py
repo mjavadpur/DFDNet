@@ -207,7 +207,7 @@ if __name__ == '__main__':
     opt.no_flip = True  # no flip
     opt.display_id = -1  # no visdom display
     opt.which_epoch = 'latest'  #
-
+    official_adaption = True
     #######################################################################
     ########################### Test Param ################################
     #######################################################################
@@ -269,7 +269,12 @@ if __name__ == '__main__':
 
         print('Step 2: Face landmark detection from the cropped image')
 
-        for idx, cropped_face in enumerate(face_helper.cropped_imgs):
+        if official_adaption:
+            cropped_imgs = [io.imread(SavePath)]
+        else:
+            cropped_imgs = face_helper.cropped_imgs
+
+        for idx, cropped_face in enumerate(cropped_imgs):
             try:
                 PredsAll = FD.get_landmarks(cropped_face)
             except Exception:
@@ -297,7 +302,7 @@ if __name__ == '__main__':
 
         print('Step 3: Face restoration')
 
-        for idx, cropped_face in enumerate(face_helper.cropped_imgs):
+        for idx, cropped_face in enumerate(cropped_imgs):
             torch.cuda.empty_cache()
             data = obtain_inputs(cropped_face, SaveLandmarkPath, ImgName)
             if data == 0:
@@ -317,7 +322,7 @@ if __name__ == '__main__':
 
         print('Step 4: Paste the Restored Face to the Input Image')
 
-        for restored_face in face_helper.restored_faces:
+        for restored_face in cropped_imgs:
             WholeInputPath = os.path.join(TestImgPath, ImgName)
             FaceResultPath = os.path.join(SaveRestorePath, ImgName)
             ParamPath = os.path.join(SaveParamPath, ImgName + '.npy')
