@@ -197,7 +197,8 @@ if __name__ == '__main__':
 
     ImgPaths = make_dataset(test_path)
     net = UNetDictFace(64).cuda()
-    checkpoint = torch.load(model_path)
+    checkpoint = torch.load(
+        model_path, map_location=lambda storage, loc: storage)
     net.load_state_dict(checkpoint)
     net.eval()
 
