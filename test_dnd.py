@@ -1,3 +1,4 @@
+import glob
 import os
 
 import cv2
@@ -34,10 +35,10 @@ class FaceRestorationHelper(object):
 
         self.all_landmarks_5 = []
         self.all_landmarks_68 = []
-        self.restored_faces = []
         self.affine_matrices = []
-        self.cropped_imgs = []
         self.inverse_affine_matrices = []
+        self.cropped_imgs = []
+        self.restored_faces = []
 
     def read_input_image(self, img_path):
         self.input_img = dlib.load_rgb_image(img_path)
@@ -53,7 +54,6 @@ class FaceRestorationHelper(object):
 
     def get_face_landmarks_5(self):
         for face in self.det_faces:
-            print('5', face.rect)
             shape = self.shape_predictor_5(self.input_img, face.rect)
             landmark = np.array([[part.x, part.y] for part in shape.parts()])
             self.all_landmarks_5.append(landmark)
@@ -89,7 +89,7 @@ class FaceRestorationHelper(object):
             self.cropped_imgs.append(cropped_img)
             if save_cropped_path is not None:
                 path, ext = os.path.splitext(save_cropped_path)
-                save_path = f'{path}_{idx}{ext}'
+                save_path = f'{path}_{idx:02d}{ext}'
                 io.imsave(save_path, cropped_img)
             # get inverse affine matrix
             self.similarity_trans.estimate(self.face_template,
@@ -141,7 +141,7 @@ class FaceRestorationHelper(object):
         self.inverse_affine_matrices = []
 
 
-def get_part_location(Landmarks, imgname):
+def get_part_location(Landmarks):
 
     Map_LE = list(np.hstack((range(17, 22), range(36, 42))))
     Map_RE = list(np.hstack((range(22, 27), range(42, 48))))
@@ -213,7 +213,7 @@ if __name__ == '__main__':
     opt.no_flip = True  # no flip
     opt.display_id = -1  # no visdom display
     opt.which_epoch = 'latest'  #
-    official_adaption = False
+    official_adaption = True
 
     TestImgPath = opt.test_path
     ImgPaths = make_dataset(TestImgPath)
@@ -225,8 +225,6 @@ if __name__ == '__main__':
         dev = 'cpu'
     model = create_model(opt)
     model.setup(opt)
-
-    # Step 1: Crop and align faces from the whole image
 
     save_crop_root = os.path.join(result_root, 'cropped_faces')
     save_restore_root = os.path.join(result_root, 'restored_faces')
@@ -256,7 +254,9 @@ if __name__ == '__main__':
         # results is different from the intermedate results. For aligning with
         # the official results, we set the official_adaption to True.
         if official_adaption:
-            cropped_imgs = [io.imread(save_crop_path)]  # TODO
+            path, ext = os.path.splitext(save_crop_path)
+            pathes = sorted(glob.glob(f'{path}_[0-9]*{ext}'))
+            cropped_imgs = [io.imread(path) for path in pathes]
         else:
             cropped_imgs = face_helper.cropped_imgs
 
