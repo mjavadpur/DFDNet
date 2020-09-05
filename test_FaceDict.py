@@ -135,12 +135,7 @@ class FaceRestorationHelper(object):
         self.inverse_affine_matrices = []
 
 
-###########################################################################
-################ functions of preparing the test images ###################
-###########################################################################
-
-
-def get_part_location(partpath, imgname):
+def get_part_location(Landmarks, imgname):
 
     Map_LE = list(np.hstack((range(17, 22), range(36, 42))))
     Map_RE = list(np.hstack((range(22, 27), range(42, 48))))
