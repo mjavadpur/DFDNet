@@ -312,6 +312,6 @@ if __name__ == '__main__':
             FaceResultPath = os.path.join(SaveRestorePath, ImgName)
             ParamPath = os.path.join(SaveParamPath, ImgName + '.npy')
             SaveWholePath = os.path.join(SaveFinalPath, ImgName)
-            face_helper(SaveWholePath)
+            face_helper.paste_to_input_image(SaveWholePath)
 
     print('\nAll results are saved in {} \n'.format(ResultsDir))
