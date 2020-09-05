@@ -186,7 +186,7 @@ def obtain_inputs(img, Landmark_path, img_name):
     return {
         'A': A.unsqueeze(0),
         'C': C.unsqueeze(0),
-        'A_paths': A_paths,
+        'A_paths': 'path',
         'Part_locations': Part_locations
     }
 
