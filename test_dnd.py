@@ -266,7 +266,7 @@ if __name__ == '__main__':
                         output = net(A.unsqueeze(0).cuda(), part_locations)
                         im = util.tensor2im(output)
                         del output
-                        torch.cuda.empty_cache()
+                    torch.cuda.empty_cache()
                     path, ext = os.path.splitext(
                         os.path.join(save_restore_root, img_name))
                     save_path = f'{path}_{idx:02d}{ext}'
