@@ -11,7 +11,8 @@ from skimage import io
 from skimage import transform as trans
 
 from data.image_folder import make_dataset
-from models.networks import UNetDictFace
+from models import create_model
+from options.test_options import TestOptions
 from util import util
 
 
@@ -188,19 +189,46 @@ def get_part_location(Landmarks):
             0), torch.from_numpy(Location_MO).unsqueeze(0)
 
 
-if __name__ == '__main__':
-    official_adaption = True
-    result_root = './Results/TesthistResults'
-    upscale_factor = 1
-    model_path = './checkpoints/facefh_dictionary/latest_net_G.pth'
-    test_path = './TestData/Testhist'
+def obtain_inputs(img, Landmarks, img_name):
 
-    ImgPaths = make_dataset(test_path)
-    net = UNetDictFace(64).cuda()
-    checkpoint = torch.load(
-        model_path, map_location=lambda storage, loc: storage)
-    net.load_state_dict(checkpoint)
-    net.eval()
+    A = img
+    Part_locations = get_part_location(Landmarks)
+    if Part_locations == 0:
+        return 0
+    C = A
+    A = cv2.resize(A, (512, 512), interpolation=cv2.INTER_CUBIC)
+    A = transforms.ToTensor()(A)
+    C = transforms.ToTensor()(C)
+    A = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(A)  #
+    C = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(C)  #
+    return {
+        'A': A.unsqueeze(0),
+        'C': C.unsqueeze(0),
+        'A_paths': 'path',
+        'Part_locations': Part_locations
+    }
+
+
+if __name__ == '__main__':
+    opt = TestOptions().parse()
+    opt.nThreads = 1  # test code only supports nThreads = 1
+    opt.batchSize = 1  # test code only supports batchSize = 1
+    opt.serial_batches = True  # no shuffle
+    opt.no_flip = True  # no flip
+    opt.display_id = -1  # no visdom display
+    opt.which_epoch = 'latest'  #
+    official_adaption = True
+
+    TestImgPath = opt.test_path
+    ImgPaths = make_dataset(TestImgPath)
+    result_root = opt.results_dir
+    UpScaleWhole = opt.upscale_factor
+    if len(opt.gpu_ids) > 0:
+        dev = 'cuda:{}'.format(opt.gpu_ids[0])
+    else:
+        dev = 'cpu'
+    model = create_model(opt)
+    model.setup(opt)
 
     save_crop_root = os.path.join(result_root, 'cropped_faces')
     save_restore_root = os.path.join(result_root, 'restored_faces')
@@ -209,7 +237,7 @@ if __name__ == '__main__':
     mmcv.mkdir_or_exist(save_restore_root)
     mmcv.mkdir_or_exist(save_final_root)
 
-    face_helper = FaceRestorationHelper(upscale_factor=upscale_factor)
+    face_helper = FaceRestorationHelper(upscale_factor=opt.upscale_factor)
 
     for img_path in ImgPaths:
         img_name = os.path.basename(img_path)
@@ -252,19 +280,13 @@ if __name__ == '__main__':
             if landmarks is None:
                 print(f'Landmarks is None, skip cropped faces with idx {idx}.')
             else:
-                # prepare data
-                part_locations = get_part_location(landmarks)
-                cropped_face = cv2.resize(
-                    cropped_face, (512, 512),
-                    interpolation=cv2.INTER_CUBIC)  # useless?
-                cropped_face = transforms.ToTensor()(cropped_face)
-                cropped_face = transforms.Normalize((0.5, 0.5, 0.5),
-                                                    (0.5, 0.5, 0.5))(
-                                                        cropped_face)
-
+                data = obtain_inputs(cropped_face, landmarks, img_name)
+                model.set_input(data)
                 try:
-                    output = net(cropped_face.cuda(), part_locations)
-                    im = util.tensor2im(output)
+                    model.test()
+                    visuals = model.get_current_visuals()
+                    im_data = visuals['fake_A']
+                    im = util.tensor2im(im_data)
                     path, ext = os.path.splitext(
                         os.path.join(save_restore_root, img_name))
                     save_path = f'{path}_{idx:02d}{ext}'
