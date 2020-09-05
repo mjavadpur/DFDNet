@@ -1,111 +1,12 @@
-import functools
-import math
 import os
-import random
-from math import sqrt
 
 import numpy as np
-import scipy.io as sio
-import scipy.ndimage
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.utils.spectral_norm as SpectralNorm
-from sync_batchnorm import convert_model
 from torch.autograd import Function
-from torch.nn import Parameter as P
-from torch.nn import init
-from torch.optim import lr_scheduler
 from torchvision import models
-from util import util
-
-####
-
-
-###############################################################################
-# Helper Functions
-###############################################################################
-def get_norm_layer(norm_type='instance'):
-    if norm_type == 'batch':
-        norm_layer = functools.partial(nn.BatchNorm2d, affine=True)
-    elif norm_type == 'instance':
-        norm_layer = functools.partial(
-            nn.InstanceNorm2d, affine=False, track_running_stats=True)
-    elif norm_type == 'none':
-        norm_layer = None
-    else:
-        raise NotImplementedError('normalization layer [%s] is not found' %
-                                  norm_type)
-
-    return norm_layer
-
-
-def get_scheduler(optimizer, opt):
-    if opt.lr_policy == 'lambda':
-
-        def lambda_rule(epoch):
-            lr_l = 1.0 - max(0, epoch + 1 + opt.epoch_count -
-                             opt.niter) / float(opt.niter_decay + 1)
-            return lr_l
-
-        scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_rule)
-    elif opt.lr_policy == 'step':
-        scheduler = lr_scheduler.StepLR(
-            optimizer, step_size=opt.lr_decay_iters, gamma=0.1)
-    elif opt.lr_policy == 'plateau':
-        scheduler = lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.2, threshold=0.01, patience=5)
-    else:
-        return NotImplementedError(
-            'learning rate policy [%s] is not implemented', opt.lr_policy)
-
-    return scheduler
-
-
-def init_weights(net, init_type='normal', gain=0.02):
-
-    def init_func(m):
-        classname = m.__class__.__name__
-        if hasattr(m, 'weight') and (classname.find('Conv') != -1
-                                     or classname.find('Linear') != -1):
-            if init_type == 'normal':
-                init.normal_(m.weight.data, 0.0, gain)
-            elif init_type == 'xavier':
-                init.xavier_normal_(m.weight.data, gain=gain)
-            elif init_type == 'kaiming':
-                init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
-            elif init_type == 'orthogonal':
-                init.orthogonal_(m.weight.data, gain=gain)
-            else:
-                raise NotImplementedError(
-                    'initialization method [%s] is not implemented' %
-                    init_type)
-            if hasattr(m, 'bias') and m.bias is not None:
-                init.constant_(m.bias.data, 0.0)
-        elif classname.find('BatchNorm2d') != -1:
-            init.normal_(m.weight.data, 1.0, gain)
-            init.constant_(m.bias.data, 0.0)
-
-    print('initialize network with %s' % init_type)
-    net.apply(init_func)
-
-
-def init_net(net,
-             init_type='normal',
-             init_gain=0.02,
-             gpu_ids=[],
-             init_flag=True):
-    if len(gpu_ids) > 0:
-        assert (torch.cuda.is_available())
-        net = convert_model(net)
-        net.cuda()
-        net = torch.nn.DataParallel(net)
-
-    if init_flag:
-
-        init_weights(net, init_type, gain=init_gain)
-
-    return net
 
 
 # compute adaptive instance norm
@@ -162,11 +63,9 @@ def adaptive_instance_normalization_4D(
 def define_G(which_model_netG, gpu_ids=[]):
     if which_model_netG == 'UNetDictFace':
         netG = UNetDictFace(64)
-        init_flag = False
-    else:
-        raise NotImplementedError(
-            'Generator model name [%s] is not recognized' % which_model_netG)
-    return init_net(netG, 'normal', 0.02, gpu_ids, init_flag)
+    netG.cuda()
+    netG = torch.nn.DataParallel(net)
+    return netG
 
 
 ##############################################################################
@@ -268,21 +167,6 @@ class MSDilateBlock(nn.Module):
         return out
 
 
-##############################UNetFace#########################
-class AdaptiveInstanceNorm(nn.Module):
-
-    def __init__(self, in_channel):
-        super().__init__()
-        self.norm = nn.InstanceNorm2d(in_channel)
-
-    def forward(self, input, style):
-        style_mean, style_std = calc_mean_std_4D(style)
-        out = self.norm(input)
-        size = input.size()
-        out = style_std.expand(size) * out + style_mean.expand(size)
-        return out
-
-
 class BlurFunctionBackward(Function):
 
     @staticmethod
@@ -345,60 +229,6 @@ class Blur(nn.Module):
 
     def forward(self, input):
         return blur(input, self.weight, self.weight_flip)
-
-
-class EqualLR:
-
-    def __init__(self, name):
-        self.name = name
-
-    def compute_weight(self, module):
-        weight = getattr(module, self.name + '_orig')
-        fan_in = weight.data.size(1) * weight.data[0][0].numel()
-        return weight * sqrt(2 / fan_in)
-
-    @staticmethod
-    def apply(module, name):
-        fn = EqualLR(name)
-
-        weight = getattr(module, name)
-        del module._parameters[name]
-        module.register_parameter(name + '_orig', nn.Parameter(weight.data))
-        module.register_forward_pre_hook(fn)
-
-        return fn
-
-    def __call__(self, module, input):
-        weight = self.compute_weight(module)
-        setattr(module, self.name, weight)
-
-
-def equal_lr(module, name='weight'):
-    EqualLR.apply(module, name)
-    return module
-
-
-class EqualConv2d(nn.Module):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        conv = nn.Conv2d(*args, **kwargs)
-        conv.weight.data.normal_()
-        conv.bias.data.zero_()
-        self.conv = equal_lr(conv)
-
-    def forward(self, input):
-        return self.conv(input)
-
-
-class NoiseInjection(nn.Module):
-
-    def __init__(self, channel):
-        super().__init__()
-        self.weight = nn.Parameter(torch.zeros(1, channel, 1, 1))
-
-    def forward(self, image, noise):
-        return image + self.weight * noise
 
 
 class StyledUpBlock(nn.Module):
@@ -560,6 +390,7 @@ def AttentionBlock(in_channel):
 
 
 class UNetDictFace(nn.Module):
+    # DFDNet: Deep Face Dictionary Network
 
     def __init__(self, ngf=64, dictionary_path='./DictionaryCenter512'):
         super().__init__()
@@ -582,13 +413,8 @@ class UNetDictFace(nn.Module):
             f_256_reshape = f_256.reshape(
                 f_256.size(0), self.channel_sizes[0], self.part_sizes[j] // 2,
                 self.part_sizes[j] // 2)
-            max_256 = torch.max(
-                torch.sqrt(
-                    compute_sum(
-                        torch.pow(f_256_reshape, 2),
-                        axis=[1, 2, 3],
-                        keepdim=True)), torch.FloatTensor([1e-4]))
-            self.Dict_256[i] = f_256_reshape  #/ max_256
+
+            self.Dict_256[i] = f_256_reshape
 
             f_128 = torch.from_numpy(
                 np.load(
@@ -599,13 +425,8 @@ class UNetDictFace(nn.Module):
             f_128_reshape = f_128.reshape(
                 f_128.size(0), self.channel_sizes[1], self.part_sizes[j] // 4,
                 self.part_sizes[j] // 4)
-            max_128 = torch.max(
-                torch.sqrt(
-                    compute_sum(
-                        torch.pow(f_128_reshape, 2),
-                        axis=[1, 2, 3],
-                        keepdim=True)), torch.FloatTensor([1e-4]))
-            self.Dict_128[i] = f_128_reshape  #/ max_128
+
+            self.Dict_128[i] = f_128_reshape
 
             f_64 = torch.from_numpy(
                 np.load(
@@ -616,13 +437,8 @@ class UNetDictFace(nn.Module):
             f_64_reshape = f_64.reshape(
                 f_64.size(0), self.channel_sizes[2], self.part_sizes[j] // 8,
                 self.part_sizes[j] // 8)
-            max_64 = torch.max(
-                torch.sqrt(
-                    compute_sum(
-                        torch.pow(f_64_reshape, 2),
-                        axis=[1, 2, 3],
-                        keepdim=True)), torch.FloatTensor([1e-4]))
-            self.Dict_64[i] = f_64_reshape  #/ max_64
+
+            self.Dict_64[i] = f_64_reshape
 
             f_32 = torch.from_numpy(
                 np.load(
@@ -633,13 +449,8 @@ class UNetDictFace(nn.Module):
             f_32_reshape = f_32.reshape(
                 f_32.size(0), self.channel_sizes[3], self.part_sizes[j] // 16,
                 self.part_sizes[j] // 16)
-            max_32 = torch.max(
-                torch.sqrt(
-                    compute_sum(
-                        torch.pow(f_32_reshape, 2),
-                        axis=[1, 2, 3],
-                        keepdim=True)), torch.FloatTensor([1e-4]))
-            self.Dict_32[i] = f_32_reshape  #/ max_32
+
+            self.Dict_32[i] = f_32_reshape
 
         self.le_256 = AttentionBlock(128)
         self.le_128 = AttentionBlock(256)
@@ -661,7 +472,7 @@ class UNetDictFace(nn.Module):
         self.mo_64 = AttentionBlock(512)
         self.mo_32 = AttentionBlock(512)
 
-        #norm
+        # norm
         self.VggExtract = VGGFeat()
 
         ######################
@@ -686,9 +497,6 @@ class UNetDictFace(nn.Module):
         self.to_rgb2 = ToRGB(ngf * 2)
         self.to_rgb3 = ToRGB(ngf * 1)
 
-        # for param in self.BlurInputConv.parameters():
-        #     param.requires_grad = False
-
     def forward(self, input, part_locations):
 
         VggFeatures = self.VggExtract(input)
@@ -697,8 +505,7 @@ class UNetDictFace(nn.Module):
         UpdateVggFeatures = []
         for i, f_size in enumerate(self.feature_sizes):
             cur_feature = VggFeatures[i]
-            update_feature = cur_feature.clone()  #* 0
-            cur_part_sizes = self.part_sizes // (512 / f_size)
+            update_feature = cur_feature.clone()  # * 0
 
             dicts_feature = getattr(self, 'Dict_' + str(f_size))
             LE_Dict_feature = dicts_feature['left_eye'].to(input)
@@ -720,7 +527,7 @@ class UNetDictFace(nn.Module):
             MO_feature = cur_feature[:, :, mo_location[1]:mo_location[3],
                                      mo_location[0]:mo_location[2]].clone()
 
-            #resize
+            # resize
             LE_feature_resize = F.interpolate(
                 LE_feature, (LE_Dict_feature.size(2), LE_Dict_feature.size(3)),
                 mode='bilinear',
@@ -804,7 +611,7 @@ class UNetDictFace(nn.Module):
             UpdateVggFeatures.append(update_feature)
 
         fea_vgg = self.MSDilate(VggFeatures[3])
-        #new version
+        # new version
         fea_up0 = self.up0(fea_vgg, UpdateVggFeatures[3])
         # out1 = F.interpolate(fea_up0,(512,512))
         # out1 = self.to_rgb0(out1)
@@ -823,11 +630,11 @@ class UNetDictFace(nn.Module):
 
         output = self.up4(fea_up3)  #
 
-        return output  #+ out4 + out3 + out2 + out1
-        #0 128 * 256 * 256
-        #1 256 * 128 * 128
-        #2 512 * 64 * 64
-        #3 512 * 32 * 32
+        return output  # + out4 + out3 + out2 + out1
+        # 0 128 * 256 * 256
+        # 1 256 * 128 * 128
+        # 2 512 * 64 * 64
+        # 3 512 * 32 * 32
 
 
 class UpResBlock(nn.Module):
