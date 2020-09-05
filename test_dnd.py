@@ -19,15 +19,6 @@ from util import util
 class FaceRestorationHelper(object):
 
     def __init__(self, upscale_factor):
-        self.face_detector = dlib.cnn_face_detection_model_v1(
-            './packages/mmod_human_face_detector.dat')
-
-        self.shape_predictor_5 = dlib.shape_predictor(
-            './packages/shape_predictor_5_face_landmarks.dat')
-
-        self.shape_predictor_68 = dlib.shape_predictor(
-            './packages/shape_predictor_68_face_landmarks.dat')
-
         self.similarity_trans = trans.SimilarityTransform()
         self.face_template = np.load('./packages/FFHQ_template.npy') / 2
         self.out_size = (512, 512)
@@ -39,6 +30,16 @@ class FaceRestorationHelper(object):
         self.inverse_affine_matrices = []
         self.cropped_imgs = []
         self.restored_faces = []
+
+        self.init_dlib()
+
+    def init_dlib(self):
+        self.face_detector = dlib.cnn_face_detection_model_v1(
+            './packages/mmod_human_face_detector.dat')
+        self.shape_predictor_5 = dlib.shape_predictor(
+            './packages/shape_predictor_5_face_landmarks.dat')
+        self.shape_predictor_68 = dlib.shape_predictor(
+            './packages/shape_predictor_68_face_landmarks.dat')
 
     def free_dlib_gpu_memory(self):
         del self.face_detector
@@ -242,6 +243,7 @@ if __name__ == '__main__':
         img_name = os.path.basename(img_path)
         print(f'Processing {img_name} image')
 
+        face_helper.init_dlib()
         save_crop_path = os.path.join(save_crop_root, img_name)
 
         # detect faces
@@ -268,7 +270,6 @@ if __name__ == '__main__':
         print(f'\tDetect {num_landmarks} faces for 68 landmarks.')
 
         face_helper.free_dlib_gpu_memory()
-        print('\tFree dlib GPU memory.')
 
         print('\tFace restoration...')
         # face restoration for each cropped face
@@ -277,7 +278,7 @@ if __name__ == '__main__':
             torch.cuda.empty_cache()
 
             if landmarks is None:
-                print('\tLandmarks is None, skip this cropped faces.')
+                print(f'Landmarks is None, skip cropped faces with idx {idx}.')
             else:
                 data = obtain_inputs(cropped_face, landmarks, img_name)
                 model.set_input(data)
