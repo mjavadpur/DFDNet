@@ -68,6 +68,8 @@ class FaceRestorationHelper(object):
             # warp and crop image
             cropped_img = cv2.warpAffine(self.input_img, affine_matrix,
                                          self.out_size)  # TODO: img shape?
+            # for equivalence
+            cropped_img = cropped_img.round().astype(np.int8)
             self.cropped_imgs.append(cropped_img)
             if save_cropped_path is not None:
                 io.imsave(save_cropped_path, cropped_img)
@@ -109,9 +111,9 @@ class FaceRestorationHelper(object):
             blur_size = w_edge * 2
             inv_soft_mask = cv2.GaussianBlur(inv_mask_center,
                                              (blur_size + 1, blur_size + 1), 0)
-        merge_img = inv_soft_mask * inv_restored_remove_border + (
-            1 - inv_soft_mask) * upsample_img
-        io.imsave(save_path, merge_img.astype(np.uint8))
+            upsample_img = inv_soft_mask * inv_restored_remove_border + (
+                1 - inv_soft_mask) * upsample_img
+        io.imsave(save_path, upsample_img.astype(np.uint8))
 
     def clean_all(self):
         self.all_landmarks = []
