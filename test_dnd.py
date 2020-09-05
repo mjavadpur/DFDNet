@@ -18,7 +18,7 @@ from util import util
 
 class FaceRestorationHelper(object):
 
-    def __init__(self, upsample_factor):
+    def __init__(self, upscale_factor):
         self.face_detector = dlib.cnn_face_detection_model_v1(
             './packages/mmod_human_face_detector.dat')
 
@@ -31,7 +31,7 @@ class FaceRestorationHelper(object):
         self.similarity_trans = trans.SimilarityTransform()
         self.face_template = np.load('./packages/FFHQ_template.npy') / 2
         self.out_size = (512, 512)
-        self.upsample_factor = upsample_factor
+        self.upscale_factor = upscale_factor
 
         self.all_landmarks_5 = []
         self.all_landmarks_68 = []
@@ -98,7 +98,7 @@ class FaceRestorationHelper(object):
                 io.imsave(save_path, cropped_img)
             # get inverse affine matrix
             self.similarity_trans.estimate(self.face_template,
-                                           landmark * self.upsample_factor)
+                                           landmark * self.upscale_factor)
             inverse_affine = self.similarity_trans.params[0:2, :]
             self.inverse_affine_matrices.append(inverse_affine)
 
@@ -107,7 +107,7 @@ class FaceRestorationHelper(object):
 
     def paste_to_input_image(self, save_path):
         h, w, _ = self.input_img.shape
-        h_up, w_up = h * self.upsample_factor, w * self.upsample_factor
+        h_up, w_up = h * self.upscale_factor, w * self.upscale_factor
 
         upsample_img = cv2.resize(self.input_img, (w_up, h_up))
         for restored_face, inverse_affine in zip(self.restored_faces,
@@ -120,7 +120,7 @@ class FaceRestorationHelper(object):
             # remove the black border
             inv_mask_erosion = cv2.erode(
                 inv_mask,
-                np.ones((2 * self.upsample_factor, 2 * self.upsample_factor),
+                np.ones((2 * self.upscale_factor, 2 * self.upscale_factor),
                         np.uint8))
             inv_restored_remove_border = inv_mask_erosion * inv_restored
             total_face_area = np.sum(inv_mask_erosion) // 3
@@ -236,7 +236,7 @@ if __name__ == '__main__':
     mmcv.mkdir_or_exist(save_restore_root)
     mmcv.mkdir_or_exist(save_final_root)
 
-    face_helper = FaceRestorationHelper(upsample_factor=opt.upscale_factor)
+    face_helper = FaceRestorationHelper(upscale_factor=opt.upscale_factor)
 
     for img_path in ImgPaths:
         img_name = os.path.basename(img_path)
@@ -267,6 +267,10 @@ if __name__ == '__main__':
         num_landmarks = face_helper.get_face_landmarks_68()
         print(f'\tDetect {num_landmarks} faces for 68 landmarks.')
 
+        face_helper.free_dlib_gpu_memory()
+        print('\tFree dlib GPU memory.')
+
+        print('\tFace restoration...')
         # face restoration for each cropped face
         for idx, (cropped_face, landmarks) in enumerate(
                 zip(cropped_imgs, face_helper.all_landmarks_68)):
@@ -292,6 +296,8 @@ if __name__ == '__main__':
                         f'Error in enhancing this image: {str(e)}. continue...'
                     )
                     continue
+
+        print('\tGenerate the final result.')
         # paste each restored face to the input image
         face_helper.paste_to_input_image(
             os.path.join(save_final_root, img_name))
