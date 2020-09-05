@@ -91,13 +91,11 @@ class FaceRestorationHelper(object):
             inv_restored = cv2.warpAffine(restored_face, inverse_affine,
                                           (w_up, h_up))
             mask = np.ones((*self.out_size, 3), dtype=np.float32)
-            inverse_mask = cv2.warpAffine(
-                mask, inverse_affine,
-                (w * self.upsample_factor, h * self.upsample_factor))
+            inv_mask = cv2.warpAffine(mask, inverse_affine, (w_up, h_up))
 
             # remove the black border
             inv_mask_erosion = cv2.erode(
-                inverse_mask,
+                inv_mask,
                 np.ones((2 * self.upsample_factor, 2 * self.upsample_factor),
                         np.uint8))
             inv_restored_remove_border = inv_mask_erosion * inv_restored
@@ -111,9 +109,9 @@ class FaceRestorationHelper(object):
             blur_size = w_edge * 2
             inv_soft_mask = cv2.GaussianBlur(inv_mask_center,
                                              (blur_size + 1, blur_size + 1), 0)
-            upsample_img = inv_soft_mask * inv_restored_remove_border + (
-                1 - inv_soft_mask) * upsample_img
-        io.imsave(save_path, upsample_img.astype(np.uint8))
+        merge_img = inv_soft_mask * inv_restored_remove_border + (
+            1 - inv_soft_mask) * upsample_img
+        io.imsave(save_path, merge_img.astype(np.uint8))
 
     def clean_all(self):
         self.all_landmarks = []
