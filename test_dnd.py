@@ -303,17 +303,6 @@ if __name__ == '__main__':
 
         print('Step 3: Face restoration')
 
-        landmarks = []
-        if not os.path.exists(
-                os.path.join(SaveLandmarkPath, ImgName + '.txt')):
-            print(os.path.join(SaveLandmarkPath, ImgName + '.txt'))
-            print('\t################ No landmark file')
-        with open(os.path.join(SaveLandmarkPath, ImgName + '.txt'), 'r') as f:
-            for line in f:
-                tmp = [np.float(i) for i in line.split(' ') if i != '\n']
-                landmarks.append(tmp)
-        landmarks = np.array(landmarks)
-
         for cropped_face, landmarks in zip(cropped_imgs,
                                            face_helper.all_landmarks_68):
             torch.cuda.empty_cache()
