@@ -56,19 +56,21 @@ class FaceRestorationHelper(object):
         if len(self.det_faces) == 0:
             print('No face detected. Try to increase upsample_num_times.')
 
-    def get_face_landmarks(self, num_landmarks=5):
-        if num_landmarks == 5:
-            predictor = self.shape_predictor_5
-            all_landmarks = self.all_landmarks_5
-        elif num_landmarks == 68:
-            predictor = self.shape_predictor_68
-            all_landmarks = self.all_landmarks_68
+    def get_face_landmarks_5(self):
+        for face in self.det_faces:
+            shape = self.shape_predictor_5(self.input_img, face.rect)
+            landmark = np.array([[part.x, part.y] for part in shape.parts()])
+            self.all_landmarks_5.append(landmark)
 
-        for i, face in enumerate(self.det_faces):
-            shape = predictor(self.input_img, face.rect)
+    def get_face_landmarks_68(self):
+        for face in self.cropped_imgs:
+            # face detection
+            det_face = self.face_detector(face, 1)
+            shape = self.shape_predictor_68(
+                face, det_face[0])  # (should only one face)
             landmark = np.array([[part.x, part.y] for part in shape.parts()])
             print(landmark)
-            all_landmarks.append(landmark)
+            self.all_landmarks_68.append(landmark)
 
     def get_affine_matrix(self, save_cropped_path=None):
         # get affine matrix for each face
@@ -275,8 +277,7 @@ if __name__ == '__main__':
         print('Step 1: Crop and align faces from the whole image')
         # detect face
         face_helper.detect_faces(ImgPath, upsample_num_times=1)
-        face_helper.get_face_landmarks(num_landmarks=5)
-        face_helper.get_face_landmarks(num_landmarks=68)
+        face_helper.get_face_landmarks_5()
         face_helper.get_affine_matrix(SavePath)
 
         print('Step 2: Face landmark detection from the cropped image')
@@ -286,7 +287,10 @@ if __name__ == '__main__':
         else:
             cropped_imgs = face_helper.cropped_imgs
 
+        face_helper.get_face_landmarks_68()
+
         for idx, cropped_face in enumerate(cropped_imgs):
+
             try:
                 PredsAll = FD.get_landmarks(cropped_face)
             except Exception:
