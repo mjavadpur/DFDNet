@@ -15,8 +15,7 @@ from skimage import transform as trans
 from data.image_folder import make_dataset
 from models import create_model
 from options.test_options import TestOptions
-
-from .util import util
+from util import util
 
 sys.path.append('FaceLandmarkDetection')
 import face_alignment
@@ -35,7 +34,12 @@ class FaceRestorationHelper(object):
         self.face_template = np.load('./packages/FFHQ_template.npy') / 2
         self.out_size = (512, 512)
         self.upsample_factor = 2
+
+        self.all_landmarks = []
         self.restored_faces = []
+        self.affine_matrices = []
+        self.cropped_imgs = []
+        self.inverse_affine_matrices = []
 
     def read_input_image(self, img_path):
         self.input_img = dlib.load_rgb_image(img_path)
@@ -49,7 +53,6 @@ class FaceRestorationHelper(object):
             print('No face detected. Try to increase upsample_num_times.')
 
     def get_face_landmarks_5(self):
-        self.all_landmarks = []
         for i, face in enumerate(self.det_faces):
             shape = self.shape_predictor_5(self.input_img, face.rect)
             landmark = np.array([[part.x, part.y] for part in shape.parts()])
@@ -57,9 +60,6 @@ class FaceRestorationHelper(object):
 
     def get_affine_matrix(self, save_cropped_path=None):
         # get affine matrix for each face
-        self.affine_matrices = []
-        self.cropped_imgs = []
-        self.inverse_affine_matrices = []
         for i, landmark in enumerate(self.all_landmarks):
             # get affine matrix
             self.similarity_trans.estimate(landmark, self.face_template)
@@ -88,7 +88,6 @@ class FaceRestorationHelper(object):
         upsample_img = cv2.resize(self.input_img, (w_up, h_up))
         for restored_face, inverse_affine in zip(self.restored_faces,
                                                  self.inverse_affine_matrices):
-            p
             inv_restored = cv2.warpAffine(restored_face, inverse_affine,
                                           (w_up, h_up))
             mask = np.ones((*self.out_size, 3), dtype=np.float32)
@@ -115,6 +114,13 @@ class FaceRestorationHelper(object):
             upsample_img = inv_soft_mask * inv_restored_remove_border + (
                 1 - inv_soft_mask) * upsample_img
         io.imsave(save_path, upsample_img.astype(np.uint8))
+
+    def clean_all(self):
+        self.all_landmarks = []
+        self.restored_faces = []
+        self.affine_matrices = []
+        self.cropped_imgs = []
+        self.inverse_affine_matrices = []
 
 
 ###########################################################################
@@ -318,4 +324,5 @@ if __name__ == '__main__':
             SaveWholePath = os.path.join(SaveFinalPath, ImgName)
             face_helper.paste_to_input_image(SaveWholePath)
 
+        face_helper.clean_all()
     print('\nAll results are saved in {} \n'.format(ResultsDir))
