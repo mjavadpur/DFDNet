@@ -1,5 +1,4 @@
 import os
-import sys
 
 import cv2
 import dlib
@@ -173,13 +172,15 @@ def get_part_location(Landmarks, imgname):
 
 
 def obtain_inputs(img, Landmarks, img_name):
-    A = Image.fromarray(img).convert('RGB')
+    # A = Image.fromarray(img).convert('RGB')
+    A = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     Part_locations = get_part_location(Landmarks, img_name)
     if Part_locations == 0:
         return 0
     C = A
-    A = A.resize((512, 512), Image.BICUBIC)
+    # A = A.resize((512, 512), Image.BICUBIC)
+    A = cv2.resize(A, (512, 512), interpolation=cv2.INTER_CUBIC)
     A = transforms.ToTensor()(A)
     C = transforms.ToTensor()(C)
     A = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(A)  #
@@ -200,7 +201,7 @@ if __name__ == '__main__':
     opt.no_flip = True  # no flip
     opt.display_id = -1  # no visdom display
     opt.which_epoch = 'latest'  #
-    official_adaption = False
+    official_adaption = True
 
     TestImgPath = opt.test_path
     ResultsDir = opt.results_dir
