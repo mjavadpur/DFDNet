@@ -60,14 +60,22 @@ class FaceRestorationHelper(object):
         return len(self.all_landmarks_5)
 
     def get_face_landmarks_68(self):
-        for face in self.cropped_imgs:
+        num_detected_face = 0
+        for idx, face in enumerate(self.cropped_imgs):
             # face detection
-            det_face = self.face_detector(face, 1)
-            print('68', det_face[0].rect)
-            shape = self.shape_predictor_68(
-                face, det_face[0].rect)  # (should only one face)
-            landmark = np.array([[part.x, part.y] for part in shape.parts()])
-            self.all_landmarks_68.append(landmark)
+            det_face = self.face_detector(face, 1)  # TODO:　can we remove it
+            if len(det_face) == 0:
+                print(f'Cannot find faces in cropped image with index {idx}.')
+                self.all_landmarks_68.append(None)
+            elif len(det_face) == 1:
+                shape = self.shape_predictor_68(face, det_face[0].rect)
+                landmark = np.array([[part.x, part.y]
+                                     for part in shape.parts()])
+                self.all_landmarks_68.append(landmark)
+                num_detected_face += 1
+            else:
+                print('Should only have one face at most.')
+        return num_detected_face
 
     def warp_crop_faces(self, save_cropped_path=None):
         for idx, landmark in enumerate(self.all_landmarks_5):
@@ -225,14 +233,13 @@ if __name__ == '__main__':
     save_final_root = os.path.join(result_root, 'final_results')
     mmcv.mkdir_or_exist(save_crop_root)
     mmcv.mkdir_or_exist(save_restore_root)
-    mmcv.mkdir_or_exist(save_restore_root)
+    mmcv.mkdir_or_exist(save_final_root)
 
     face_helper = FaceRestorationHelper()
 
     for img_path in ImgPaths:
         img_name = os.path.basename(img_path)
         print(f'Processing {img_name} image')
-        torch.cuda.empty_cache()
 
         save_crop_path = os.path.join(save_crop_root, img_name)
 
@@ -241,47 +248,52 @@ if __name__ == '__main__':
             img_path, upsample_num_times=1)
         # get face landmarks for each face
         num_landmarks = face_helper.get_face_landmarks_5()
-        print(f'\tStep 1: Detect {num_det_faces} faces, '
-              f'{num_landmarks} landmarks.')
+        print(f'\tDetect {num_det_faces} faces, {num_landmarks} landmarks.')
         # warp and crop each face
         face_helper.warp_crop_faces(save_crop_path)
 
+        # the official codes use skimage.io to read the cropped images. Its
+        # results is different from the intermedate results. For aligning with
+        # the official results, we set the official_adaption to True.
         if official_adaption:
             cropped_imgs = [io.imread(save_crop_path)]  # TODO
         else:
             cropped_imgs = face_helper.cropped_imgs
-        # get 68 landmarks
-        face_helper.get_face_landmarks_68()
 
-        print('\tStep 3: Face restoration')
+        # get 68 landmarks for each cropped face
+        num_landmarks = face_helper.get_face_landmarks_68()
+        print(f'\tDetect {num_landmarks} faces for 68 landmarks.')
 
+        # face restoration for each cropped face
         for idx, (cropped_face, landmarks) in enumerate(
                 zip(cropped_imgs, face_helper.all_landmarks_68)):
             torch.cuda.empty_cache()
-            data = obtain_inputs(cropped_face, landmarks, img_name)
-            if data == 0:
-                print('Error in landmark file, continue...')
-                continue
-            model.set_input(data)
-            try:
-                model.test()
-                visuals = model.get_current_visuals()
-                im_data = visuals['fake_A']
-                im = util.tensor2im(im_data)
-                path, ext = os.path.splitext(
-                    os.path.join(save_restore_path, img_name))
-                save_path = f'{path}_{idx}{ext}'
-                util.save_image(im, save_path)
-                face_helper.add_restored_face(im)
-            except Exception as e:
-                print(f'Error in enhancing this image: {str(e)}. continue...')
-                continue
 
-        print('\tStep 4: Paste the Restored Face to the Input Image')
+            if landmarks is None:
+                print('\tLandmarks is None, skip this cropped faces.')
+            else:
+                data = obtain_inputs(cropped_face, landmarks, img_name)
+                model.set_input(data)
+                try:
+                    model.test()
+                    visuals = model.get_current_visuals()
+                    im_data = visuals['fake_A']
+                    im = util.tensor2im(im_data)
+                    path, ext = os.path.splitext(
+                        os.path.join(save_restore_root, img_name))
+                    save_path = f'{path}_{idx}{ext}'
+                    util.save_image(im, save_path)
+                    face_helper.add_restored_face(im)
+                except Exception as e:
+                    print(
+                        f'Error in enhancing this image: {str(e)}. continue...'
+                    )
+                    continue
+        # paste each restored face to the input image
+        face_helper.paste_to_input_image(
+            os.path.join(save_final_root, img_name))
 
-        for restored_face in cropped_imgs:
-            SaveWholePath = os.path.join(save_final_path, img_name)
-            face_helper.paste_to_input_image(SaveWholePath)
-
+        # clean all the intermediate results to process the next image
         face_helper.clean_all()
-    print('\nAll results are saved in {} \n'.format(result_root))
+
+    print(f'\nAll results are saved in {result_root}')
