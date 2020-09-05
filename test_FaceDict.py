@@ -30,12 +30,16 @@ class FaceRestorationHelper(object):
         self.shape_predictor_5 = dlib.shape_predictor(
             './packages/shape_predictor_5_face_landmarks.dat')
 
+        self.shape_predictor_68 = dlib.shape_predictor(
+            './packages/shape_predictor_68_face_landmarks.dat')
+
         self.similarity_trans = trans.SimilarityTransform()
         self.face_template = np.load('./packages/FFHQ_template.npy') / 2
         self.out_size = (512, 512)
         self.upsample_factor = 2
 
-        self.all_landmarks = []
+        self.all_landmarks_5 = []
+        self.all_landmarks_68 = []
         self.restored_faces = []
         self.affine_matrices = []
         self.cropped_imgs = []
@@ -52,15 +56,23 @@ class FaceRestorationHelper(object):
         if len(self.det_faces) == 0:
             print('No face detected. Try to increase upsample_num_times.')
 
-    def get_face_landmarks_5(self):
+    def get_face_landmarks(self, num_landmarks=5):
+        if num_landmarks == 5:
+            predictor = self.shape_predictor_5
+            all_landmarks = self.all_landmarks_5
+        elif num_landmarks == 68:
+            predictor = self.shape_predictor_68
+            all_landmarks = self.all_landmarks_68
+
         for i, face in enumerate(self.det_faces):
-            shape = self.shape_predictor_5(self.input_img, face.rect)
+            shape = predictor(self.input_img, face.rect)
             landmark = np.array([[part.x, part.y] for part in shape.parts()])
-            self.all_landmarks.append(landmark)
+            print(landmark)
+            all_landmarks.append(landmark)
 
     def get_affine_matrix(self, save_cropped_path=None):
         # get affine matrix for each face
-        for i, landmark in enumerate(self.all_landmarks):
+        for i, landmark in enumerate(self.all_landmarks_5):
             # get affine matrix
             self.similarity_trans.estimate(landmark, self.face_template)
             affine_matrix = self.similarity_trans.params[0:2, :]
@@ -114,7 +126,8 @@ class FaceRestorationHelper(object):
         io.imsave(save_path, upsample_img.astype(np.uint8))
 
     def clean_all(self):
-        self.all_landmarks = []
+        self.all_landmarks_5 = []
+        self.all_landmarks_68 = []
         self.restored_faces = []
         self.affine_matrices = []
         self.cropped_imgs = []
@@ -262,7 +275,8 @@ if __name__ == '__main__':
         print('Step 1: Crop and align faces from the whole image')
         # detect face
         face_helper.detect_faces(ImgPath, upsample_num_times=1)
-        face_helper.get_face_landmarks_5()
+        face_helper.get_face_landmarks(num_landmarks=5)
+        face_helper.get_face_landmarks(num_landmarks=68)
         face_helper.get_affine_matrix(SavePath)
 
         print('Step 2: Face landmark detection from the cropped image')
