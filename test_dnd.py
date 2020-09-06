@@ -2,17 +2,22 @@ import glob
 import os
 
 import cv2
-import dlib
 import mmcv
 import numpy as np
 import torch
 import torchvision.transforms as transforms
+# from basicsr.utils import tensor2img
 from skimage import io
 from skimage import transform as trans
 
-from data.image_folder import make_dataset
 from models.networks import UNetDictFace
 from util import util
+
+try:
+    import dlib
+except ImportError:
+    print('Please install dlib before testing face restoration.'
+          'Reference:　https://github.com/davisking/dlib')
 
 
 class FaceRestorationHelper(object):
@@ -106,10 +111,12 @@ class FaceRestorationHelper(object):
         self.restored_faces.append(face)
 
     def paste_to_input_image(self, save_path):
-        h, w, _ = self.input_img.shape
+        # operate in the BGR order
+        input_img = self.input_img[:, :, [2, 1, 0]]
+        h, w, _ = input_img.shape
         h_up, w_up = h * self.upscale_factor, w * self.upscale_factor
 
-        upsample_img = cv2.resize(self.input_img, (w_up, h_up))
+        upsample_img = cv2.resize(input_img, (w_up, h_up))
         for restored_face, inverse_affine in zip(self.restored_faces,
                                                  self.inverse_affine_matrices):
             inv_restored = cv2.warpAffine(restored_face, inverse_affine,
@@ -135,7 +142,7 @@ class FaceRestorationHelper(object):
                                              (blur_size + 1, blur_size + 1), 0)
             upsample_img = inv_soft_mask * inv_restored_remove_border + (
                 1 - inv_soft_mask) * upsample_img
-        io.imsave(save_path, upsample_img.astype(np.uint8))
+        mmcv.imwrite(upsample_img.astype(np.uint8), save_path)
 
     def clean_all(self):
         self.all_landmarks_5 = []
@@ -157,28 +164,28 @@ def get_part_location(Landmarks):
         Mean_LE = np.mean(Landmarks[Map_LE], 0)
         L_LE = np.max((np.max(
             np.max(Landmarks[Map_LE], 0) - np.min(Landmarks[Map_LE], 0)) / 2,
-                       16))
+                       16))  # noqa: E126
         Location_LE = np.hstack(
             (Mean_LE - L_LE + 1, Mean_LE + L_LE)).astype(int)
         # right eye
         Mean_RE = np.mean(Landmarks[Map_RE], 0)
         L_RE = np.max((np.max(
             np.max(Landmarks[Map_RE], 0) - np.min(Landmarks[Map_RE], 0)) / 2,
-                       16))
+                       16))  # noqa: E126
         Location_RE = np.hstack(
             (Mean_RE - L_RE + 1, Mean_RE + L_RE)).astype(int)
         # nose
         Mean_NO = np.mean(Landmarks[Map_NO], 0)
         L_NO = np.max((np.max(
             np.max(Landmarks[Map_NO], 0) - np.min(Landmarks[Map_NO], 0)) / 2,
-                       16))
+                       16))  # noqa: E126
         Location_NO = np.hstack(
             (Mean_NO - L_NO + 1, Mean_NO + L_NO)).astype(int)
         # mouth
         Mean_MO = np.mean(Landmarks[Map_MO], 0)
         L_MO = np.max((np.max(
             np.max(Landmarks[Map_MO], 0) - np.min(Landmarks[Map_MO], 0)) / 2,
-                       16))
+                       16))  # noqa: E126
         Location_MO = np.hstack(
             (Mean_MO - L_MO + 1, Mean_MO + L_MO)).astype(int)
     except Exception:
@@ -195,7 +202,6 @@ if __name__ == '__main__':
     model_path = './checkpoints/facefh_dictionary/latest_net_G.pth'
     test_path = './TestData/Testhist'
 
-    ImgPaths = make_dataset(test_path)
     net = UNetDictFace(64).cuda()
 
     checkpoint = torch.load(
@@ -212,7 +218,7 @@ if __name__ == '__main__':
 
     face_helper = FaceRestorationHelper(upscale_factor=upscale_factor)
 
-    for img_path in ImgPaths:
+    for img_path in glob.glob(os.path.join(test_path, '*.[jp][pn]g')):
         img_name = os.path.basename(img_path)
         print(f'Processing {img_name} image')
 
@@ -270,7 +276,7 @@ if __name__ == '__main__':
                     path, ext = os.path.splitext(
                         os.path.join(save_restore_root, img_name))
                     save_path = f'{path}_{idx:02d}{ext}'
-                    util.save_image(im, save_path)
+                    mmcv.imwrite(im, save_path)
                     face_helper.add_restored_face(im)
                 except Exception as e:
                     print(
